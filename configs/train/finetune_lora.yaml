@@ -1,29 +1,36 @@
 # model/tokenizer
-model_name: # update
-tokenizer_name: # update
-gradient_checkpointing: false
-save_name: "nomic-ai/gpt4all-lora-multi-turn"
+model_name: "decapoda-research/llama-65b-hf"
+tokenizer_name: "decapoda-research/llama-65b-hf"
+gradient_checkpointing: true
+save_name: "llama-lora/llama-lora-flash-attention-python"
+max_tokens: 2048
 
 # dataset
 streaming: false
 num_proc: 64
-dataset_path: "data_multiturn"
-max_length: 1024
-batch_size: 4
+dataset_path: "data"
+max_length: 2048
+batch_size: 128
+micro_batch_size: 4
 
 # train dynamics
 lr: 5.0e-5
 eval_every: 2000
 eval_steps: 100
 save_every: 2000
-output_dir: "ckpts/gpt4all-lora-multi"
+output_dir: "ckpts/llama-lora-flash-attention-python"
 checkpoint: null
-lora: true
 warmup_steps: 100
 num_epochs: 2
+
+# lora 
+lora: true
+lora_rank: 128
+lora_alpha: 32
+lora_dropout: 0.05
 
 # logging
 wandb: true
 wandb_entity: # update
-wandb_project_name: # update
-seed: 42
+wandb_project_name: "llama-65b-lora-flash-attention-python"
+seed: 69

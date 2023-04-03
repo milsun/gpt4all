@@ -1,11 +1,13 @@
+--index-url https://download.pytorch.org/whl/cu117
+torch
 accelerate
 datasets
 torchmetrics
 evaluate
-transformers
+./transformers
 wandb
 pip
-peft
+git+https://github.com/huggingface/peft.git
 nodelist-inflator
 deepspeed
 sentencepiece

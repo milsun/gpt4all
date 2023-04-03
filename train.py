@@ -12,6 +12,9 @@ from data import load_data
 from torchmetrics import MeanMetric
 from tqdm import tqdm
 
+import torch.backends.cuda
+torch.backends.cuda.enable_flash_sdp(enabled=True)
+
 
 def format_metrics(metrics, split, prefix=""):
     log = f"[{split}]" + prefix
@@ -46,7 +49,7 @@ def train(accelerator, config):
     accelerator.print(config)
     accelerator.print(f"Using {accelerator.num_processes} GPUs")
 
-    tokenizer = AutoTokenizer.from_pretrained(config['tokenizer_name'])
+    tokenizer = AutoTokenizer.from_pretrained(config['tokenizer_name'], max_length=config['max_tokens'])
     # llama has no pad token, set it to new token
     if tokenizer.pad_token is None:
         # these tokens are already in the vocab, just not mapped correctly
@@ -58,9 +61,14 @@ def train(accelerator, config):
         
 
     checkpoint = config["gradient_checkpointing"]
-    model = AutoModelForCausalLM.from_pretrained(config["model_name"], 
-                                                    use_cache=False if checkpoint else True,
-                                                    trust_remote_code=True) 
+
+    model = AutoModelForCausalLM.from_pretrained(
+        config["model_name"],
+        load_in_8bit=True,
+        device_map=device_map,
+        use_cache=False if checkpoint else True,
+        trust_remote_code=True
+    )
 
     if added_tokens > 0:
         model.resize_token_embeddings(len(tokenizer))
@@ -71,7 +79,7 @@ def train(accelerator, config):
     if config["lora"]:
         peft_config = LoraConfig(
             # should R be configurable?
-            task_type=TaskType.CAUSAL_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1
+            task_type=TaskType.CAUSAL_LM, inference_mode=False, r=config['lora_rank'], lora_alpha=config['lora_alpha'], lora_dropout=config['lora_dropout']
         )
         model = get_peft_model(model, peft_config)
         model.print_trainable_parameters()
