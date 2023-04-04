@@ -1,10 +1,11 @@
 --index-url https://download.pytorch.org/whl/cu117
 torch
 accelerate
+huggingface_hub
 datasets
 torchmetrics
 evaluate
-./transformers
+./transformers_flash_attention
 wandb
 pip
 git+https://github.com/huggingface/peft.git

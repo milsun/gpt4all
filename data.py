@@ -1,44 +1,40 @@
 import glob
 import torch
-from datasets import load_dataset, concatenate_datasets
+from datasets import load_dataset
 import os
 from torch.utils.data import DataLoader
 from transformers import DefaultDataCollator
 
+IGNORE_INDEX = -100
 
+# The tokenization function
+# def tokenize_inputs(config, tokenizer, example):
+#     tokens = tokenizer(example['content'] + tokenizer.eos_token, padding="max_length", truncation=True, max_length=config['max_length'])
+    
+#     return tokens
+
+# # Apply the tokenizer in batch mode and drop all the columns except the tokenization result
+# train_token = train.map(tokenization, batched = True, remove_columns=["title", "abstract", "Unnamed: 0", "Unnamed: 0.1"], num_proc=10)
+# val_token = val.map(tokenization, batched = True, remove_columns=["title", "abstract", "Unnamed: 0", "Unnamed: 0.1"], num_proc=10)
 
 def tokenize_inputs(config, tokenizer, examples):
     max_length = config["max_length"]
-    input_ids = torch.full((len(examples["prompt"]), max_length), tokenizer.pad_token_id)
-    # ignore bos
-    newline_tokens = tokenizer("\n", return_tensors="pt")["input_ids"][0, 1:]
+    input_ids = torch.full((len(examples["content"]), max_length), tokenizer.pad_token_id)
 
     out = {"labels": [], "attention_mask": []}
-    for i, (prompt, response) in enumerate(zip(examples["prompt"], examples["response"])):
-        input_tokens = tokenizer(prompt, truncation=True, max_length=max_length // 2, return_tensors="pt")["input_ids"].squeeze()
+    for i, content in enumerate(examples["content"]):
+        input_tokens = tokenizer(content, truncation=True, max_length=max_length, return_tensors="pt")["input_ids"].squeeze()
         input_len = len(input_tokens)
 
-        # plus one since we remove bos from response
-        # but we subtract one since we want to add eos token
-        remaining_tokens = max_length - input_len - len(newline_tokens) + 1
-        # remove bos
-        target_tokens = tokenizer(response, truncation=True, max_length=remaining_tokens, return_tensors="pt")["input_ids"].squeeze()[1:]
-
         input_ids[i, :input_len] = input_tokens
-        # add newline between prompt and response
-        newline_plus_inputs = input_len + len(newline_tokens)
-        input_ids[i, input_len: newline_plus_inputs] = newline_tokens
 
-        # add target tokens, remove bos
-        input_ids[i, newline_plus_inputs: newline_plus_inputs + len(target_tokens)] = target_tokens
         # add eos token, enforce stopping if we don't truncate 
         # we don't want long code to stop generating if truncated during training
-        if newline_plus_inputs + len(target_tokens) < max_length:
-            input_ids[i, newline_plus_inputs + len(target_tokens)] = tokenizer.eos_token_id
+        if len(input_tokens) < max_length:
+            input_ids[i, len(input_tokens)] = tokenizer.eos_token_id
 
         labels = input_ids[i].clone()
-        labels[: newline_plus_inputs] = -100
-        labels[labels == tokenizer.pad_token_id] = -100
+        labels[labels == tokenizer.pad_token_id] = IGNORE_INDEX
         # to debug this, can set all values == -100 to the pad token, then assert that tokenizer.decode(labels, skip_special_tokens=True).strip() == response
 
         attention_mask = input_ids[i].ne(tokenizer.pad_token_id).int()
@@ -51,7 +47,6 @@ def tokenize_inputs(config, tokenizer, examples):
     out = {k: torch.stack(v) if isinstance(v, list) else v for k, v in out.items()}
 
     return out
-
 
 def load_data(config, tokenizer):
     dataset_path = config["dataset_path"]
@@ -83,13 +78,11 @@ def load_data(config, tokenizer):
     train_dataset = train_dataset.map(
         lambda ele: tokenize_inputs(config, tokenizer, ele),
         batched=True,
-        remove_columns=["source", "prompt"],
         **kwargs
     )
     val_dataset = val_dataset.map(
         lambda ele: tokenize_inputs(config, tokenizer, ele), 
         batched=True,
-        remove_columns=["source", "prompt"],
         **kwargs
     )
 

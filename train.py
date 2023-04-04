@@ -1,5 +1,5 @@
 import os
-from transformers import AutoModelForCausalLM, AutoTokenizer 
+from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig
 from transformers.trainer_pt_utils import get_parameter_names
 import torch
 import torch.nn as nn
@@ -11,6 +11,8 @@ from peft import get_peft_model, LoraConfig, TaskType
 from data import load_data
 from torchmetrics import MeanMetric
 from tqdm import tqdm
+from accelerate import init_empty_weights, infer_auto_device_map
+
 
 import torch.backends.cuda
 torch.backends.cuda.enable_flash_sdp(enabled=True)
@@ -21,6 +23,19 @@ def format_metrics(metrics, split, prefix=""):
     log += " ".join([f"{key}: {value:.4f}" for key, value in metrics.items()])
 
     return log
+
+def get_device_map(model_name, id_=0, do_int8=True):
+
+    with init_empty_weights():
+        config = AutoConfig.from_pretrained(model_name)
+        model = AutoModelForCausalLM.from_config(config)
+
+    device_map = infer_auto_device_map(
+        model, dtype=torch.int8 if do_int8 else torch.float16, no_split_module_classes=["BloomBlock", "OPTDecoderLayer", "LLaMADecoderLayer"]
+    )
+    print(device_map)
+    del model
+    return device_map
 
 
 def evaluate(config, model, val_dataloader):
@@ -53,7 +68,7 @@ def train(accelerator, config):
     # llama has no pad token, set it to new token
     if tokenizer.pad_token is None:
         # these tokens are already in the vocab, just not mapped correctly
-        added_tokens = tokenizer.add_special_tokens({"bos_token": "<s>", "eos_token": "</s>", "pad_token": "<pad>"})
+        added_tokens = tokenizer.add_special_tokens({"eos_token": "</s>", "pad_token": "<pad>"})
 
         
     with accelerator.main_process_first():
@@ -62,13 +77,26 @@ def train(accelerator, config):
 
     checkpoint = config["gradient_checkpointing"]
 
+    gpus = torch.cuda.device_count()
+
+    free_in_GB = int(min(torch.cuda.mem_get_info())/1024**3)
+    print(free_in_GB)
+    max_memory = f'{free_in_GB-2}GB'
+    print(max_memory)
+    max_memory = {i: max_memory for i in range(gpus)}
+    print(max_memory)
+
     model = AutoModelForCausalLM.from_pretrained(
         config["model_name"],
         load_in_8bit=True,
-        device_map=device_map,
+        device_map=get_device_map(config['model_name']),
+        max_memory=max_memory,
         use_cache=False if checkpoint else True,
         trust_remote_code=True
     )
+
+    model.is_parallelizable = True
+    model.model_parallel = True
 
     if added_tokens > 0:
         model.resize_token_embeddings(len(tokenizer))
@@ -78,7 +106,6 @@ def train(accelerator, config):
 
     if config["lora"]:
         peft_config = LoraConfig(
-            # should R be configurable?
             task_type=TaskType.CAUSAL_LM, inference_mode=False, r=config['lora_rank'], lora_alpha=config['lora_alpha'], lora_dropout=config['lora_dropout']
         )
         model = get_peft_model(model, peft_config)
@@ -119,9 +146,10 @@ def train(accelerator, config):
     train_loss = MeanMetric().to(model.device)
 
     if accelerator.state.deepspeed_plugin is not None:
-        gradient_accumulation_steps = accelerator.state.deepspeed_plugin.deepspeed_config[
-            "gradient_accumulation_steps"
-        ]
+        gradient_accumulation_steps = config["batch_size"] // config["micro_batch_size"]
+        # gradient_accumulation_steps = accelerator.state.deepspeed_plugin.deepspeed_config[
+        #     "gradient_accumulation_steps"
+        # ]
 
     for epoch in range(config["num_epochs"]):
         for step, batch in enumerate(tqdm(train_dataloader)):

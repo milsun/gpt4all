@@ -2,7 +2,7 @@
 model_name: "decapoda-research/llama-65b-hf"
 tokenizer_name: "decapoda-research/llama-65b-hf"
 gradient_checkpointing: true
-save_name: "llama-lora/llama-lora-flash-attention-python"
+save_name: "milsunone/llama-65b-lora-flash-attention-python"
 max_tokens: 2048
 
 # dataset
@@ -14,14 +14,14 @@ batch_size: 128
 micro_batch_size: 4
 
 # train dynamics
-lr: 5.0e-5
+lr: 3.0e-4
 eval_every: 2000
 eval_steps: 100
 save_every: 2000
 output_dir: "ckpts/llama-lora-flash-attention-python"
 checkpoint: null
 warmup_steps: 100
-num_epochs: 2
+num_epochs: 1
 
 # lora 
 lora: true
