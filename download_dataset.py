@@ -4,7 +4,7 @@
 import datasets
 
 # Replace 'dataset_name' with the name of the dataset you want to download
-dataset = datasets.load_dataset('the-stack-dedup-python-filtered-code-only-local-import-removed')
+dataset = datasets.load_dataset('milsunone/the-stack-dedup-python-filtered-code-only-local-import-removed')
 
 # Replace 'split_name' with the name of the split you want to download (e.g., 'train', 'test', 'validation')
 split = dataset['train']
