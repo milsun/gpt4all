@@ -1,7 +1,7 @@
 
 
 # Replace 'dataset_name' with the name of the dataset you want to download
-from transformers import datasets
+import datasets
 
 # Replace 'dataset_name' with the name of the dataset you want to download
 dataset = datasets.load_dataset('the-stack-dedup-python-filtered-code-only-local-import-removed')
